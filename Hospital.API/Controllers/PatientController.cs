@@ -46,7 +46,7 @@ namespace Hospital.API.Controllers
 
         [HttpGet(nameof(GetPatients)), AllowAnonymous]
         [ProducesResponseType(typeof(PagedResponse<List<PatientResult>>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetPatients([FromQuery] GetAllPatientParameter parameter)
+        public async Task<IActionResult> GetPatients([FromQuery] PatientParameter parameter)
         {
             var result = await _patientService.GetPatients(parameter);
 
@@ -62,6 +62,19 @@ namespace Hospital.API.Controllers
         public async Task<IActionResult> CreatePatientRecord([FromBody] PatientRecordModel model)
         {
             var result = await _patientService.CreatePatientRecord(model);
+
+            return result.Status switch
+            {
+                nameof(HttpStatusCode.OK) => Ok(result),
+                _ => BadRequest(result.Message)
+            };
+        }
+
+        [HttpPost(nameof(GetPatientStatistics)), AllowAnonymous]
+        [ProducesResponseType(typeof(Response<PatientStatisticsResult>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetPatientStatistics([FromQuery] PatientStatisticsParameter parameter)
+        {
+            var result = await _patientService.GetPatientStatistics(parameter);
 
             return result.Status switch
             {

@@ -90,6 +90,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+
+
 app.UseCors("CorsPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
@@ -98,5 +100,21 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+
+using (var scope = app.Services.CreateScope())
+{
+    var serviceProvider = scope.ServiceProvider;
+    try
+    {
+        var userManager = serviceProvider.
+            GetRequiredService<UserManager<IdentityUser>>();
+
+        IdentityDataInitializer.SeedUsers(userManager);
+    }
+    catch
+    {
+        // ignored
+    }
+}
 
 app.Run();

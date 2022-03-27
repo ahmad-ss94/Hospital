@@ -7,6 +7,7 @@ using Hospital.Application.Results.Patient;
 using Hospital.Core.Entities;
 using Hospital.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 using System.Net;
 
 namespace Hospital.Application.Services
@@ -20,7 +21,7 @@ namespace Hospital.Application.Services
             _dbContext = dbContext;
         }
 
-        public async Task<PagedResponse<List<PatientResult>>> GetPatients(GetAllPatientParameter parameter)
+        public async Task<PagedResponse<List<PatientResult>>> GetPatients(PatientParameter parameter)
         {
             var pagedData = await _dbContext.Patient
                 .Skip((parameter.PageNumber - 1) * parameter.PageSize)
@@ -191,6 +192,53 @@ namespace Hospital.Application.Services
             }
         }
 
+        public async Task<Response<PatientStatisticsResult>> GetPatientStatistics(PatientStatisticsParameter parameter)
+        {
+            try
+            {
+                var patient = await _dbContext.Patient.Include(c => c.PatientRecords).FirstOrDefaultAsync(c => c.Id == parameter.PatientId);
+                if (patient == null)
+                    return new Response<PatientStatisticsResult>()
+                    {
+                        Status = nameof(HttpStatusCode.NotFound),
+                        Message = $"There is no patient with Id '{parameter.PatientId}'"
+                    };
+
+                var averageOfBills = GetAverage(patient?.PatientRecords.ToList());
+                var averageOfBillsOutliers = averageOfBills != null
+                    ? GetAverage(patient?.PatientRecords
+                        ?.Where(c => c.Bill <= (averageOfBills + 2) && c.Bill >= (averageOfBills - 2)).ToList()) : null;
+                var the5RecordEntryOfPatient = patient?.PatientRecords?.OrderByDescending(c => c.TimeOfEntry).Take(5).LastOrDefault()!.TimeOfEntry;
+
+                var monthHighestNumberOfVisits = patient?.PatientRecords?.GroupBy(c => c.TimeOfEntry.Month)?.OrderByDescending(c => c.Count())?.FirstOrDefault()?.FirstOrDefault()?.TimeOfEntry.ToString("MMM", CultureInfo.InvariantCulture);
+
+                var statistics = new PatientStatisticsResult
+                {
+                    Name = patient?.Name,
+                    Age = patient?.DateOfBirth != null ? GetAge(patient.DateOfBirth.Value) : null,
+                    AverageOfBills = averageOfBills,
+                    AverageOfBillsOutliers = averageOfBillsOutliers,
+                    The5RecordEntryOfPatient = the5RecordEntryOfPatient,
+                    MonthHighestNumberOfVisits = monthHighestNumberOfVisits
+                };
+
+                return new Response<PatientStatisticsResult>()
+                {
+                    Status = nameof(HttpStatusCode.OK),
+                    Message = "Patient Statistics Successfully!",
+                    Data = statistics
+                };
+            }
+            catch (Exception ex)
+            {
+                return new Response<PatientStatisticsResult>()
+                {
+                    Status = nameof(HttpStatusCode.BadRequest),
+                    Message = ex.Message
+                };
+            }
+        }
+
         public async Task<Response<string>> AddSampleData()
         {
             var systemId = 10;
@@ -219,7 +267,7 @@ namespace Hospital.Application.Services
                     new Faker<PatientRecord>("en_US")
                         .RuleFor(u => u.Id, Guid.NewGuid)
                         .RuleFor(u => u.DiseaseName, faker => faker.PickRandom(diseaseNames))
-                        .RuleFor(u => u.Description, faker => faker.Random.String(20))
+                        .RuleFor(u => u.Description, faker => faker.Random.Words(20))
                         .RuleFor(u => u.Bill, faker => faker.Random.Decimal(1, 200))
                         .RuleFor(u => u.TimeOfEntry, faker => faker.Date.Between(new DateTime(2000, 1, 1), DateTime.Now))
                         .RuleFor(u => u.CreatedOn, faker => faker.Date.Between(new DateTime(2000, 1, 1), DateTime.Now))
@@ -237,6 +285,23 @@ namespace Hospital.Application.Services
                 Status = nameof(HttpStatusCode.OK),
                 Message = "Sample Data Added Successfully!"
             };
+        }
+
+        public int GetAge(DateTime dateOfBirth)
+        {
+            var age = DateTime.Now.Subtract(dateOfBirth).Days;
+            age /= 365;
+            return age;
+        }
+
+        public decimal? GetAverage(List<PatientRecord>? patientRecords)
+        {
+            if (patientRecords != null && patientRecords.Any())
+            {
+                return patientRecords.Average(c => c.Bill);
+            }
+
+            return null;
         }
     }
 }
